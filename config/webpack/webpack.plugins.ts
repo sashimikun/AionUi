@@ -23,9 +23,13 @@ export const plugins: WebpackPluginInstance[] = [
       { from: path.resolve(__dirname, '../../assistant'), to: 'assistant', noErrorOnMissing: true },
     ],
   }),
-  new ForkTsCheckerWebpackPlugin({
-    logger: 'webpack-infrastructure',
-  }),
+  ...(process.env.AION_MODE === 'prod_start'
+    ? []
+    : [
+        new ForkTsCheckerWebpackPlugin({
+          logger: 'webpack-infrastructure',
+        }),
+      ]),
   new webpack.DefinePlugin({
     'process.env.env': JSON.stringify(process.env.env),
   }),

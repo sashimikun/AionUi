@@ -15,6 +15,7 @@ import type OpenAI from 'openai';
 import { ClientFactory, type RotatingClient } from '@/common/ClientFactory';
 import type { UnifiedChatCompletionResponse } from '@/common/RotatingApiClient';
 import { IMAGE_EXTENSIONS, MIME_TYPE_MAP, MIME_TO_EXT_MAP, DEFAULT_IMAGE_EXTENSION } from '@/common/constants';
+import { uuid } from '@/common/utils';
 
 /**
  * Safely parse JSON string with jsonrepair fallback
@@ -110,7 +111,8 @@ async function saveGeneratedImage(base64Data: string, config: Config, messageId?
   const workspaceDir = config.getWorkingDir();
   const timestamp = Date.now();
   const fileExtension = getFileExtensionFromDataUrl(base64Data);
-  const fileName = `img-${timestamp}${fileExtension}`;
+  // Use UUID to ensure unique filename and avoid collisions/overwriting
+  const fileName = `img-${timestamp}-${uuid()}${fileExtension}`;
   const filePath = path.join(workspaceDir, fileName);
 
   const base64WithoutPrefix = base64Data.replace(/^data:image\/[^;]+;base64,/, '');

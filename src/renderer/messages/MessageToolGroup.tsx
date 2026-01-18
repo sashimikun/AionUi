@@ -363,7 +363,7 @@ const ToolResultDisplay: React.FC<{
   const { resultDisplay, name } = content;
 
   // 图片生成特殊处理 Special handling for image generation
-  if (name === 'ImageGeneration' && typeof resultDisplay === 'object') {
+  if ((name === 'ImageGeneration' || name === 'aionui_image_generation') && typeof resultDisplay === 'object') {
     const result = resultDisplay as ImageGenerationResult;
     // 如果有 img_url 才显示图片，否则显示错误信息
     if (result.img_url) {
@@ -446,7 +446,7 @@ const MessageToolGroup: React.FC<IMessageToolGroupProps> = ({ message }) => {
         }
 
         // ImageGeneration 特殊处理：单独展示图片，不用 Alert 包裹 Special handling for ImageGeneration: display image separately without Alert wrapper
-        if (name === 'ImageGeneration' && typeof resultDisplay === 'object') {
+        if ((name === 'ImageGeneration' || name === 'aionui_image_generation') && typeof resultDisplay === 'object') {
           const result = resultDisplay as ImageGenerationResult;
           if (result.img_url) {
             return <ImageDisplay key={callId} imgUrl={result.img_url} relativePath={result.relative_path} />;

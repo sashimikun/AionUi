@@ -7,9 +7,10 @@
 import { ipcBridge } from '@/common';
 import type { TChatConversation } from '@/common/storage';
 import { uuid } from '@/common/utils';
-import { Button, Dropdown, Menu, Tooltip, Typography } from '@arco-design/web-react';
+import { Button, Dropdown, Menu, Modal, Tooltip, Typography } from '@arco-design/web-react';
 import { History } from '@icon-park/react';
-import React, { useMemo } from 'react';
+import { IconClockCircle } from '@arco-design/web-react/icon';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
@@ -24,7 +25,28 @@ import addChatIcon from '@/renderer/assets/add-chat.svg';
 import GeminiModelSelector from './gemini/GeminiModelSelector';
 import { useGeminiModelSelection } from './gemini/useGeminiModelSelection';
 import { usePresetAssistantInfo } from '@/renderer/hooks/usePresetAssistantInfo';
+import TaskScheduler from './components/TaskScheduler';
 // import SkillRuleGenerator from './components/SkillRuleGenerator'; // Temporarily hidden
+
+const _TaskSchedulerButton: React.FC<{ conversation_id: string }> = ({ conversation_id }) => {
+  const [visible, setVisible] = useState(false);
+  return (
+    <>
+      <Tooltip content="Task Scheduler">
+        <Button size='mini' icon={<IconClockCircle />} onClick={() => setVisible(true)} style={{ marginRight: 8 }} />
+      </Tooltip>
+      <Modal
+        title={null}
+        footer={null}
+        visible={visible}
+        onCancel={() => setVisible(false)}
+        style={{ width: 600 }}
+      >
+        <TaskScheduler conversationId={conversation_id} />
+      </Modal>
+    </>
+  );
+};
 
 const _AssociatedConversation: React.FC<{ conversation_id: string }> = ({ conversation_id }) => {
   const { data } = useSWR(['getAssociateConversation', conversation_id], () => ipcBridge.conversation.getAssociateConversation.invoke({ conversation_id }));
@@ -106,6 +128,7 @@ const GeminiConversationPanel: React.FC<{ conversation: GeminiConversation; slid
     siderTitle: sliderTitle,
     sider: <ChatSider conversation={conversation} />,
     headerLeft: <GeminiModelSelector selection={modelSelection} />,
+    headerExtra: <_TaskSchedulerButton conversation_id={conversation.id} />,
     // headerExtra: <SkillRuleGenerator conversationId={conversation.id} workspace={conversation.extra?.workspace} />, // Temporarily hidden
     workspaceEnabled,
     // 传递预设助手信息 / Pass preset assistant info
@@ -166,10 +189,12 @@ const ChatConversation: React.FC<{
         agentName: presetAssistantInfo.name,
         agentLogo: presetAssistantInfo.logo,
         agentLogoIsEmoji: presetAssistantInfo.isEmoji,
+        headerExtra: <_TaskSchedulerButton conversation_id={conversation.id} />,
       }
     : {
         backend: conversation?.type === 'acp' ? conversation?.extra?.backend : conversation?.type === 'codex' ? 'codex' : undefined,
         agentName: (conversation?.extra as { agentName?: string })?.agentName,
+        headerExtra: <_TaskSchedulerButton conversation_id={conversation.id} />,
       };
 
   return (

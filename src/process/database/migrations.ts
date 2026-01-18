@@ -162,9 +162,51 @@ const migration_v6: IMigration = {
 };
 
 /**
+ * Migration v6 -> v7: Add scheduled_tasks table and is_system_trigger to messages
+ */
+const migration_v7: IMigration = {
+  version: 7,
+  name: 'Add scheduled tasks and message trigger flag',
+  up: (db) => {
+    // Add scheduled_tasks table
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS scheduled_tasks (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        schedule_type TEXT CHECK(schedule_type IN ('cron', 'once', 'interval')),
+        schedule_value TEXT NOT NULL,
+        task_data TEXT NOT NULL,
+        is_active INTEGER DEFAULT 1,
+        last_run_at INTEGER,
+        next_run_at INTEGER,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_conversation_id ON scheduled_tasks(conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_next_run_at ON scheduled_tasks(next_run_at);
+    `);
+
+    // Add is_system_trigger to messages
+    const tableInfo = db.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>;
+    const hasColumn = tableInfo.some((col) => col.name === 'is_system_trigger');
+
+    if (!hasColumn) {
+      db.exec(`ALTER TABLE messages ADD COLUMN is_system_trigger INTEGER DEFAULT 0;`);
+    }
+    console.log('[Migration v7] Added scheduled_tasks table and is_system_trigger column');
+  },
+  down: (db) => {
+    db.exec(`DROP TABLE IF EXISTS scheduled_tasks;`);
+    // SQLite cannot drop column easily, ignoring removal of is_system_trigger for rollback
+    console.log('[Migration v7] Rolled back: Dropped scheduled_tasks table');
+  },
+};
+
+/**
  * All migrations in order
  */
-export const ALL_MIGRATIONS: IMigration[] = [migration_v1, migration_v2, migration_v3, migration_v4, migration_v5, migration_v6];
+export const ALL_MIGRATIONS: IMigration[] = [migration_v1, migration_v2, migration_v3, migration_v4, migration_v5, migration_v6, migration_v7];
 
 /**
  * Get migrations needed to upgrade from one version to another

@@ -88,6 +88,11 @@ interface IMessage<T extends TMessageType, Content extends Record<string, any>> 
    * 消息状态
    */
   status?: 'finish' | 'pending' | 'error' | 'work';
+  /**
+   * 是否由系统触发（如调度任务），为true时在UI中隐藏气泡
+   * Whether triggered by system (e.g. scheduled task), hide bubble in UI if true
+   */
+  isSystemTrigger?: boolean;
 }
 
 export type IMessageText = IMessage<'text', { content: string }>;
@@ -285,6 +290,7 @@ export const transformMessage = (message: IResponseMessage): TMessage => {
         content: {
           content: message.data as string,
         },
+        isSystemTrigger: message.isSystemTrigger,
       };
     }
     case 'tool_call': {

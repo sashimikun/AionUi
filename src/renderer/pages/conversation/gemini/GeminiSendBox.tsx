@@ -20,8 +20,8 @@ import { iconColors } from '@/renderer/theme/colors';
 import { emitter, useAddEventListener } from '@/renderer/utils/emitter';
 import { mergeFileSelectionItems } from '@/renderer/utils/fileSelection';
 import { getModelContextLimit } from '@/renderer/utils/modelContextLimits';
-import { Button, Message, Tag } from '@arco-design/web-react';
-import { Plus } from '@icon-park/react';
+import { Button, Message, Tag, Tooltip } from '@arco-design/web-react';
+import { Plus, Refresh } from '@icon-park/react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { GeminiModelSelection } from './useGeminiModelSelection';
@@ -237,6 +237,8 @@ const GeminiSendBox: React.FC<{
   const { checkAndUpdateTitle } = useAutoTitle();
   const quotaPromptedRef = useRef<string | null>(null);
   const exhaustedModelsRef = useRef(new Set<string>());
+  const [canResend, setCanResend] = useState(false);
+  const lastSentDataRef = useRef<{ content: string; files: string[] } | null>(null);
 
   const { currentModel, getDisplayModelName, providers, geminiModeLookup, getAvailableModels, handleSelectModel } = modelSelection;
 
@@ -282,6 +284,7 @@ const GeminiSendBox: React.FC<{
 
   const handleGeminiError = useCallback(
     (message: IResponseMessage) => {
+      setCanResend(true);
       if (!isQuotaErrorMessage(message.data)) return;
       const msgId = message.msg_id || 'unknown';
       if (quotaPromptedRef.current === msgId) return;
@@ -342,16 +345,19 @@ const GeminiSendBox: React.FC<{
     setUploadFile,
   });
 
-  const onSendHandler = async (message: string) => {
+  const onSendHandler = async (message: string, filesOverride?: string[]) => {
     if (!currentModel?.useModel) return;
+    setCanResend(false);
     const msg_id = uuid();
     // 设置当前活跃的消息 ID，用于过滤掉旧请求的事件
     // Set current active message ID to filter out events from old requests
     setActiveMsgId(msg_id);
 
     // 保存文件列表（清空前需要保存）/ Save file list before clearing
-    const filesToSend = collectSelectedFiles(uploadFile, atPath);
+    const filesToSend = filesOverride || collectSelectedFiles(uploadFile, atPath);
     const hasFiles = filesToSend.length > 0;
+
+    lastSentDataRef.current = { content: message, files: filesToSend };
 
     // 立即清空输入框，避免用户误以为消息没发送
     // Clear input immediately to avoid user thinking message wasn't sent
@@ -405,6 +411,12 @@ const GeminiSendBox: React.FC<{
     });
   };
 
+  const handleResend = useCallback(() => {
+    if (lastSentDataRef.current) {
+      onSendHandler(lastSentDataRef.current.content, lastSentDataRef.current.files);
+    }
+  }, []);
+
   return (
     <div className='max-w-800px w-full mx-auto flex flex-col mt-auto mb-16px'>
       <ThoughtDisplay thought={thought} running={running} onStop={handleStop} />
@@ -424,18 +436,25 @@ const GeminiSendBox: React.FC<{
         defaultMultiLine={true}
         lockMultiLine={true}
         tools={
-          <Button
-            type='secondary'
-            shape='circle'
-            icon={<Plus theme='outline' size='14' strokeWidth={2} fill={iconColors.primary} />}
-            onClick={() => {
-              void ipcBridge.dialog.showOpen.invoke({ properties: ['openFile', 'multiSelections'] }).then((files) => {
-                if (files && files.length > 0) {
-                  setUploadFile([...uploadFile, ...files]);
-                }
-              });
-            }}
-          />
+          <>
+            <Button
+              type='secondary'
+              shape='circle'
+              icon={<Plus theme='outline' size='14' strokeWidth={2} fill={iconColors.primary} />}
+              onClick={() => {
+                void ipcBridge.dialog.showOpen.invoke({ properties: ['openFile', 'multiSelections'] }).then((files) => {
+                  if (files && files.length > 0) {
+                    setUploadFile([...uploadFile, ...files]);
+                  }
+                });
+              }}
+            />
+            {canResend && (
+              <Tooltip content={t('common.retry', { defaultValue: 'Retry' })}>
+                <Button type='secondary' status='danger' shape='circle' icon={<Refresh theme='outline' size='14' strokeWidth={2} />} onClick={handleResend} className='ml-2' />
+              </Tooltip>
+            )}
+          </>
         }
         sendButtonPrefix={<ContextUsageIndicator tokenUsage={tokenUsage} contextLimit={getModelContextLimit(currentModel?.useModel)} size={24} />}
         prefix={

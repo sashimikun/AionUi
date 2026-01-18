@@ -121,3 +121,69 @@ export function parseAndFormatApiError(error: unknown, authType?: AuthType, user
 
   return '[API Error: An unknown error occurred.]';
 }
+
+/**
+ * Helper to parse duration string (e.g. "30s", "1.5s") to milliseconds
+ */
+function parseDurationToMs(duration: string): number | null {
+  if (!duration) return null;
+  const match = duration.match(/^([\d.]+)(s|ms)$/);
+  if (!match) return null;
+  const value = parseFloat(match[1]);
+  const unit = match[2];
+  if (unit === 's') return Math.ceil(value * 1000);
+  if (unit === 'ms') return Math.ceil(value);
+  return null;
+}
+
+/**
+ * Extracts retry delay from error object if available
+ * Supports standard Google Cloud error details (QuotaFailure, ErrorInfo)
+ */
+export function extractRetryDelay(error: unknown): number | null {
+  if (!error) return null;
+
+  let errorObj = error;
+
+  // Handle stringified JSON
+  if (typeof error === 'string') {
+    const jsonStart = error.indexOf('{');
+    if (jsonStart !== -1) {
+      try {
+        errorObj = JSON.parse(error.substring(jsonStart));
+      } catch {
+        return null;
+      }
+    } else {
+      return null;
+    }
+  }
+
+  if (typeof errorObj !== 'object') return null;
+
+  // Cast to any to access properties
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const err = errorObj as any;
+  const details = err.error?.details || err.details;
+
+  if (Array.isArray(details)) {
+    for (const detail of details) {
+      // Direct retryDelay field (some formats)
+      if (detail.retryDelay) {
+        return parseDurationToMs(detail.retryDelay);
+      }
+
+      // ErrorInfo with metadata
+      if (detail['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo' && detail.metadata) {
+        if (detail.metadata.quotaResetDelay) {
+          return parseDurationToMs(detail.metadata.quotaResetDelay);
+        }
+        if (detail.metadata.retryDelay) {
+          return parseDurationToMs(detail.metadata.retryDelay);
+        }
+      }
+    }
+  }
+
+  return null;
+}

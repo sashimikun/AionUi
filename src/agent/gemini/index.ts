@@ -20,7 +20,7 @@ import type { Settings } from './cli/settings';
 import { loadSettings } from './cli/settings';
 import { ConversationToolConfig } from './cli/tools/conversation-tool-config';
 import { mapToDisplay, type TrackedToolCall } from './cli/useReactToolScheduler';
-import { getPromptCount, handleCompletedTools, processGeminiStreamEvents, startNewPrompt } from './utils';
+import { getPromptCount, handleCompletedTools, processGeminiStreamEvents, startNewPrompt, RetryableError } from './utils';
 import { globalToolCallGuard, type StreamConnectionEvent } from './cli/streamResilience';
 import { getGlobalTokenManager } from './cli/oauthTokenManager';
 import fs from 'fs';
@@ -419,13 +419,18 @@ export class GeminiAgent {
         }
       })
       .catch((e: unknown) => {
-        const rawMessage = e instanceof Error ? e.message : JSON.stringify(e);
-        const errorMessage = this.enrichErrorMessage(rawMessage);
-        // 清理受保护的工具调用
-        // Clean up protected tool calls on error
+        // 清理受保护的工具调用 / Clean up protected tool calls on error
         for (const req of toolCallRequests) {
           globalToolCallGuard.unprotect(req.callId);
         }
+
+        if (e instanceof RetryableError) {
+          throw e;
+        }
+
+        const rawMessage = e instanceof Error ? e.message : JSON.stringify(e);
+        const errorMessage = this.enrichErrorMessage(rawMessage);
+
         this.onStreamEvent({
           type: 'error',
           data: errorMessage,
@@ -498,28 +503,72 @@ export class GeminiAgent {
         startNewPrompt();
       }
 
-      const stream = this.geminiClient.sendMessageStream(query, abortController.signal, prompt_id);
-      this.onStreamEvent({
-        type: 'start',
-        data: '',
-        msg_id,
-      });
-      this.handleMessage(stream, msg_id, abortController)
-        .catch((e: unknown) => {
-          const errorMessage = e instanceof Error ? e.message : JSON.stringify(e);
-          this.onStreamEvent({
-            type: 'error',
-            data: errorMessage,
-            msg_id,
-          });
-        })
-        .finally(() => {
+      const executeWithRetry = async (attempt: number = 0) => {
+        try {
+          const stream = this.geminiClient.sendMessageStream(query, abortController.signal, prompt_id);
+          // Only emit 'start' event on the first attempt
+          if (attempt === 0) {
+            this.onStreamEvent({
+              type: 'start',
+              data: '',
+              msg_id,
+            });
+          }
+
+          await this.handleMessage(stream, msg_id, abortController);
+          // If successful (no error thrown), emit finish
           this.onStreamEvent({
             type: 'finish',
             data: '',
             msg_id,
           });
-        });
+        } catch (e) {
+          if (e instanceof RetryableError) {
+            const MAX_RETRIES = 3;
+            if (attempt < MAX_RETRIES) {
+              const retryDelay = e.delayMs;
+              console.log(`[GeminiAgent] Rate limit exceeded. Retrying in ${retryDelay}ms (Attempt ${attempt + 1}/${MAX_RETRIES})`);
+
+              this.onStreamEvent({
+                type: 'thought',
+                data: {
+                  subject: 'Rate Limit Exceeded',
+                  description: `Retrying in ${Math.ceil(retryDelay / 1000)}s...`,
+                },
+                msg_id,
+              });
+
+              // Wait for delay
+              await new Promise((resolve) => setTimeout(resolve, retryDelay));
+
+              // Recursive retry
+              return executeWithRetry(attempt + 1);
+            } else {
+              // Max retries reached
+              console.warn(`[GeminiAgent] Max retries (${MAX_RETRIES}) reached for rate limit.`);
+            }
+          }
+
+          const rawMessage = e instanceof Error ? e.message : JSON.stringify(e);
+          // Use original message if it was a retryable error that failed
+          const errorMessage = e instanceof RetryableError ? e.originalMessage : this.enrichErrorMessage(rawMessage);
+          this.onStreamEvent({
+            type: 'error',
+            data: errorMessage,
+            msg_id,
+          });
+          // Also emit finish to ensure UI state is reset
+          this.onStreamEvent({
+            type: 'finish',
+            data: '',
+            msg_id,
+          });
+        }
+      };
+
+      // Start execution (fire and forget)
+      void executeWithRetry();
+
       return '';
     } catch (e) {
       const rawMessage = e instanceof Error ? e.message : JSON.stringify(e);

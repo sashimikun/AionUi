@@ -6,7 +6,7 @@
 
 import type { CompletedToolCall, Config, GeminiClient, ServerGeminiStreamEvent, ToolCallRequestInfo } from '@office-ai/aioncli-core';
 import { executeToolCall, GeminiEventType as ServerGeminiEventType } from '@office-ai/aioncli-core';
-import { parseAndFormatApiError } from './cli/errorParsing';
+import { extractRetryDelay, parseAndFormatApiError } from './cli/errorParsing';
 import { MIME_TO_EXT_MAP, DEFAULT_IMAGE_EXTENSION } from '@/common/constants';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -24,6 +24,16 @@ enum StreamProcessingStatus {
 export interface StreamMonitorOptions {
   config?: Partial<StreamResilienceConfig>;
   onConnectionEvent?: (event: StreamConnectionEvent) => void;
+}
+
+export class RetryableError extends Error {
+  constructor(
+    public delayMs: number,
+    public originalMessage: string
+  ) {
+    super(originalMessage);
+    this.name = 'RetryableError';
+  }
 }
 
 /**
@@ -132,6 +142,13 @@ export const processGeminiStreamEvents = async (stream: AsyncIterable<ServerGemi
             // Safely extract error value - event.value may be string, object with .error, or undefined
             const errorEvent = event as unknown as { value?: { error?: unknown } | unknown };
             const errorValue = (errorEvent.value as { error?: unknown })?.error ?? errorEvent.value ?? 'Unknown error occurred';
+
+            const retryDelay = extractRetryDelay(errorValue);
+            if (retryDelay && retryDelay > 0) {
+              const message = parseAndFormatApiError(errorValue, config.getContentGeneratorConfig().authType);
+              throw new RetryableError(retryDelay, message);
+            }
+
             onStreamEvent({
               type: event.type,
               data: parseAndFormatApiError(errorValue, config.getContentGeneratorConfig().authType),

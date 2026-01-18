@@ -8,6 +8,7 @@ import { bridge } from '@office-ai/platform';
 import type { OpenDialogOptions } from 'electron';
 import type { McpSource } from '../process/services/mcpServices/McpProtocol';
 import type { AcpBackend } from '../types/acpTypes';
+import type { IScheduledTask } from '../process/database/types';
 import type { IMcpServer, IProvider, TChatConversation, TProviderWithModel } from './storage';
 import type { PreviewHistoryTarget, PreviewSnapshotInfo } from './types/preview';
 import type { ProtocolDetectionRequest, ProtocolDetectionResponse } from './utils/protocolDetector';
@@ -178,6 +179,14 @@ export const database = {
   getUserConversations: bridge.buildProvider<import('@/common/storage').TChatConversation[], { page?: number; pageSize?: number }>('database.get-user-conversations'),
 };
 
+// Scheduler operations
+export const scheduler = {
+  createTask: bridge.buildProvider<IScheduledTask, ICreateTaskParams>('scheduler.create-task'),
+  updateTask: bridge.buildProvider<boolean, IUpdateTaskParams>('scheduler.update-task'),
+  deleteTask: bridge.buildProvider<boolean, { taskId: string }>('scheduler.delete-task'),
+  getTasks: bridge.buildProvider<IScheduledTask[], { conversationId: string }>('scheduler.get-tasks'),
+};
+
 export const previewHistory = {
   list: bridge.buildProvider<PreviewSnapshotInfo[], { target: PreviewHistoryTarget }>('preview-history.list'),
   save: bridge.buildProvider<PreviewSnapshotInfo, { target: PreviewHistoryTarget; content: string }>('preview-history.save'),
@@ -290,10 +299,27 @@ export interface IResponseMessage {
   data: unknown;
   msg_id: string;
   conversation_id: string;
+  isSystemTrigger?: boolean;
 }
 
 interface IBridgeResponse<D = {}> {
   success: boolean;
   data?: D;
   msg?: string;
+}
+
+export interface ICreateTaskParams {
+  conversation_id: string;
+  schedule_type: 'cron' | 'once' | 'interval';
+  schedule_value: string;
+  task_data: {
+    prompt: string;
+    model?: string;
+    files?: string[];
+  };
+}
+
+export interface IUpdateTaskParams {
+  taskId: string;
+  updates: Partial<IScheduledTask>;
 }

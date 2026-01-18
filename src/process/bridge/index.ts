@@ -22,6 +22,7 @@ import { initModelBridge } from './modelBridge';
 import { initPreviewHistoryBridge } from './previewHistoryBridge';
 import { initShellBridge } from './shellBridge';
 import { initWindowControlsBridge } from './windowControlsBridge';
+import { initSchedulerBridge } from './schedulerBridge';
 
 /**
  * 初始化所有IPC桥接模块
@@ -45,6 +46,7 @@ export function initAllBridges(): void {
   initPreviewHistoryBridge();
   initDocumentBridge();
   initWindowControlsBridge();
+  initSchedulerBridge();
 }
 
 /**

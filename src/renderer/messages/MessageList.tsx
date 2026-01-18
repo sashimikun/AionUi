@@ -184,6 +184,7 @@ const MessageList: React.FC<{ className?: string }> = () => {
                 return null;
               }
 
+              if (message.isSystemTrigger) return null;
               return <MessageItem message={message} key={message.id}></MessageItem>;
             })}
           </ImagePreviewContext.Provider>

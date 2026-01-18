@@ -15,6 +15,26 @@ import type { TMessage } from '@/common/chatLib';
  */
 
 /**
+ * Scheduled Task (任务调度)
+ */
+export interface IScheduledTask {
+  id: string;
+  conversation_id: string;
+  schedule_type: 'cron' | 'once' | 'interval';
+  schedule_value: string; // cron expression or timestamp or interval in ms
+  task_data: {
+    prompt: string;
+    model?: string;
+    files?: string[];
+    // ... other options
+  };
+  is_active: boolean;
+  last_run_at?: number;
+  next_run_at?: number;
+  created_at: number;
+}
+
+/**
  * User account (新增的账户系统)
  */
 export interface IUser {
@@ -89,6 +109,22 @@ export interface IMessageRow {
   content: string; // JSON string of message content
   position?: 'left' | 'right' | 'center' | 'pop';
   status?: 'finish' | 'pending' | 'error' | 'work';
+  is_system_trigger?: number; // 0 or 1
+  created_at: number;
+}
+
+/**
+ * Scheduled Task stored in database (序列化后的格式)
+ */
+export interface IScheduledTaskRow {
+  id: string;
+  conversation_id: string;
+  schedule_type: 'cron' | 'once' | 'interval';
+  schedule_value: string;
+  task_data: string; // JSON string
+  is_active: number; // 0 or 1
+  last_run_at?: number;
+  next_run_at?: number;
   created_at: number;
 }
 
@@ -176,6 +212,7 @@ export function messageToRow(message: TMessage): IMessageRow {
     content: JSON.stringify(message.content),
     position: message.position,
     status: message.status,
+    is_system_trigger: message.isSystemTrigger ? 1 : 0,
     created_at: message.createdAt || Date.now(),
   };
 }
@@ -192,8 +229,43 @@ export function rowToMessage(row: IMessageRow): TMessage {
     content: JSON.parse(row.content),
     position: row.position,
     status: row.status,
+    isSystemTrigger: !!row.is_system_trigger,
     createdAt: row.created_at,
   } as TMessage;
+}
+
+/**
+ * Convert IScheduledTask to database row
+ */
+export function taskToRow(task: IScheduledTask): IScheduledTaskRow {
+  return {
+    id: task.id,
+    conversation_id: task.conversation_id,
+    schedule_type: task.schedule_type,
+    schedule_value: task.schedule_value,
+    task_data: JSON.stringify(task.task_data),
+    is_active: task.is_active ? 1 : 0,
+    last_run_at: task.last_run_at,
+    next_run_at: task.next_run_at,
+    created_at: task.created_at,
+  };
+}
+
+/**
+ * Convert database row to IScheduledTask
+ */
+export function rowToTask(row: IScheduledTaskRow): IScheduledTask {
+  return {
+    id: row.id,
+    conversation_id: row.conversation_id,
+    schedule_type: row.schedule_type,
+    schedule_value: row.schedule_value,
+    task_data: JSON.parse(row.task_data),
+    is_active: !!row.is_active,
+    last_run_at: row.last_run_at,
+    next_run_at: row.next_run_at,
+    created_at: row.created_at,
+  };
 }
 
 /**

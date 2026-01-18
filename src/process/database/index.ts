@@ -10,8 +10,8 @@ import fs from 'fs';
 import path from 'path';
 import { CURRENT_DB_VERSION, getDatabaseVersion, initSchema, setDatabaseVersion } from './schema';
 import { runMigrations as executeMigrations } from './migrations';
-import type { IConversationRow, IMessageRow, IPaginatedResult, IQueryResult, IUser, TChatConversation, TMessage } from './types';
-import { conversationToRow, messageToRow, rowToConversation, rowToMessage } from './types';
+import type { IConversationRow, IMessageRow, IPaginatedResult, IQueryResult, IScheduledTask, IScheduledTaskRow, IUser, TChatConversation, TMessage } from './types';
+import { conversationToRow, messageToRow, rowToConversation, rowToMessage, rowToTask, taskToRow } from './types';
 import { ensureDirectory, getDataPath } from '@process/utils';
 
 /**
@@ -532,11 +532,11 @@ export class AionUIDatabase {
       const row = messageToRow(message);
 
       const stmt = this.db.prepare(`
-        INSERT INTO messages (id, conversation_id, msg_id, type, content, position, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO messages (id, conversation_id, msg_id, type, content, position, status, is_system_trigger, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      stmt.run(row.id, row.conversation_id, row.msg_id, row.type, row.content, row.position, row.status, row.created_at);
+      stmt.run(row.id, row.conversation_id, row.msg_id, row.type, row.content, row.position, row.status, row.is_system_trigger, row.created_at);
 
       return {
         success: true,
@@ -601,11 +601,12 @@ export class AionUIDatabase {
         SET type     = ?,
             content  = ?,
             position = ?,
-            status   = ?
+            status   = ?,
+            is_system_trigger = ?
         WHERE id = ?
       `);
 
-      const result = stmt.run(row.type, row.content, row.position, row.status, messageId);
+      const result = stmt.run(row.type, row.content, row.position, row.status, row.is_system_trigger, messageId);
 
       return {
         success: true,
@@ -677,6 +678,150 @@ export class AionUIDatabase {
       return {
         success: false,
         error: error.message,
+      };
+    }
+  }
+
+  /**
+   * ==================
+   * Scheduled Task operations
+   * ==================
+   */
+
+  createTask(task: IScheduledTask): IQueryResult<IScheduledTask> {
+    try {
+      const row = taskToRow(task);
+
+      const stmt = this.db.prepare(`
+        INSERT INTO scheduled_tasks (id, conversation_id, schedule_type, schedule_value, task_data, is_active, last_run_at, next_run_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      stmt.run(row.id, row.conversation_id, row.schedule_type, row.schedule_value, row.task_data, row.is_active, row.last_run_at, row.next_run_at, row.created_at);
+
+      return {
+        success: true,
+        data: task,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  getTask(taskId: string): IQueryResult<IScheduledTask> {
+    try {
+      const row = this.db.prepare('SELECT * FROM scheduled_tasks WHERE id = ?').get(taskId) as IScheduledTaskRow | undefined;
+
+      if (!row) {
+        return {
+          success: false,
+          error: 'Task not found',
+        };
+      }
+
+      return {
+        success: true,
+        data: rowToTask(row),
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  updateTask(taskId: string, updates: Partial<IScheduledTask>): IQueryResult<boolean> {
+    try {
+      const existing = this.getTask(taskId);
+      if (!existing.success || !existing.data) {
+        return {
+          success: false,
+          error: 'Task not found',
+        };
+      }
+
+      const updated = {
+        ...existing.data,
+        ...updates,
+      } as IScheduledTask;
+      const row = taskToRow(updated);
+
+      const stmt = this.db.prepare(`
+        UPDATE scheduled_tasks
+        SET schedule_type = ?,
+            schedule_value = ?,
+            task_data = ?,
+            is_active = ?,
+            last_run_at = ?,
+            next_run_at = ?
+        WHERE id = ?
+      `);
+
+      const result = stmt.run(row.schedule_type, row.schedule_value, row.task_data, row.is_active, row.last_run_at, row.next_run_at, taskId);
+
+      return {
+        success: true,
+        data: result.changes > 0,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  deleteTask(taskId: string): IQueryResult<boolean> {
+    try {
+      const stmt = this.db.prepare('DELETE FROM scheduled_tasks WHERE id = ?');
+      const result = stmt.run(taskId);
+
+      return {
+        success: true,
+        data: result.changes > 0,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  getConversationTasks(conversationId: string): IQueryResult<IScheduledTask[]> {
+    try {
+      const rows = this.db.prepare('SELECT * FROM scheduled_tasks WHERE conversation_id = ? ORDER BY created_at DESC').all(conversationId) as IScheduledTaskRow[];
+
+      return {
+        success: true,
+        data: rows.map(rowToTask),
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+        data: [],
+      };
+    }
+  }
+
+  getAllActiveTasks(): IQueryResult<IScheduledTask[]> {
+    try {
+      const rows = this.db.prepare('SELECT * FROM scheduled_tasks WHERE is_active = 1').all() as IScheduledTaskRow[];
+
+      return {
+        success: true,
+        data: rows.map(rowToTask),
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+        data: [],
       };
     }
   }

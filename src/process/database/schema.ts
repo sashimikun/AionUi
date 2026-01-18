@@ -69,6 +69,7 @@ export function initSchema(db: Database.Database): void {
       content TEXT NOT NULL,
       position TEXT CHECK(position IN ('left', 'right', 'center', 'pop')),
       status TEXT CHECK(status IN ('finish', 'pending', 'error', 'work')),
+      is_system_trigger INTEGER DEFAULT 0,
       created_at INTEGER NOT NULL,
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
     );
@@ -78,6 +79,25 @@ export function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(type);
     CREATE INDEX IF NOT EXISTS idx_messages_msg_id ON messages(msg_id);
     CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages(conversation_id, created_at);
+  `);
+
+  // Scheduled Tasks table (任务调度表)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      schedule_type TEXT CHECK(schedule_type IN ('cron', 'once', 'interval')),
+      schedule_value TEXT NOT NULL,
+      task_data TEXT NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      last_run_at INTEGER,
+      next_run_at INTEGER,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_conversation_id ON scheduled_tasks(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_next_run_at ON scheduled_tasks(next_run_at);
   `);
 
   console.log('[Database] Schema initialized successfully');
@@ -108,4 +128,4 @@ export function setDatabaseVersion(db: Database.Database, version: number): void
  * Current database schema version
  * Update this when adding new migrations in migrations.ts
  */
-export const CURRENT_DB_VERSION = 6;
+export const CURRENT_DB_VERSION = 7;

@@ -154,7 +154,7 @@ export class GeminiAgentManager extends BaseAgentManager<{
     }
   }
 
-  async sendMessage(data: { input: string; msg_id: string; files?: string[] }) {
+  async sendMessage(data: { input: string; msg_id: string; files?: string[]; isSystemTrigger?: boolean }) {
     const message: TMessage = {
       id: data.msg_id,
       type: 'text',
@@ -163,8 +163,21 @@ export class GeminiAgentManager extends BaseAgentManager<{
       content: {
         content: data.input,
       },
+      isSystemTrigger: data.isSystemTrigger,
     };
     addMessage(this.conversation_id, message);
+
+    if (data.isSystemTrigger) {
+      const userResponseMessage: IResponseMessage = {
+        type: 'user_content',
+        conversation_id: this.conversation_id,
+        msg_id: data.msg_id,
+        data: data.input,
+        isSystemTrigger: true,
+      };
+      ipcBridge.geminiConversation.responseStream.emit(userResponseMessage);
+    }
+
     this.status = 'pending';
     const result = await this.bootstrap
       .catch((e) => {

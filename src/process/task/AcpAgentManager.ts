@@ -116,7 +116,7 @@ class AcpAgentManager extends BaseAgentManager<AcpAgentManagerData> {
     return this.bootstrap;
   }
 
-  async sendMessage(data: { content: string; files?: string[]; msg_id?: string }): Promise<{
+  async sendMessage(data: { content: string; files?: string[]; msg_id?: string; isSystemTrigger?: boolean }): Promise<{
     success: boolean;
     msg?: string;
     message?: string;
@@ -148,6 +148,7 @@ class AcpAgentManager extends BaseAgentManager<AcpAgentManagerData> {
           content: {
             content: data.content, // Save original content to history
           },
+          isSystemTrigger: data.isSystemTrigger,
           createdAt: Date.now(),
         };
         addMessage(this.conversation_id, userMessage);
@@ -156,6 +157,7 @@ class AcpAgentManager extends BaseAgentManager<AcpAgentManagerData> {
           conversation_id: this.conversation_id,
           msg_id: data.msg_id,
           data: userMessage.content.content,
+          isSystemTrigger: data.isSystemTrigger,
         };
         ipcBridge.acpConversation.responseStream.emit(userResponseMessage);
 

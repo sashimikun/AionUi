@@ -160,7 +160,7 @@ class CodexAgentManager extends BaseAgentManager<CodexAgentManagerData> implemen
     }
   }
 
-  async sendMessage(data: { content: string; files?: string[]; msg_id?: string }) {
+  async sendMessage(data: { content: string; files?: string[]; msg_id?: string; isSystemTrigger?: boolean }) {
     try {
       await this.bootstrap;
       const contentToSend = data.content?.includes(AIONUI_FILES_MARKER) ? data.content.split(AIONUI_FILES_MARKER)[0].trimEnd() : data.content;
@@ -174,9 +174,21 @@ class CodexAgentManager extends BaseAgentManager<CodexAgentManagerData> implemen
           position: 'right',
           conversation_id: this.conversation_id,
           content: { content: data.content },
+          isSystemTrigger: data.isSystemTrigger,
           createdAt: Date.now(),
         };
         addMessage(this.conversation_id, userMessage);
+
+        if (data.isSystemTrigger) {
+          const userResponseMessage: IResponseMessage = {
+            type: 'user_content',
+            conversation_id: this.conversation_id,
+            msg_id: data.msg_id,
+            data: data.content,
+            isSystemTrigger: true,
+          };
+          ipcBridge.codexConversation.responseStream.emit(userResponseMessage);
+        }
       }
 
       // 处理文件引用 - 参考 ACP 的文件引用处理
